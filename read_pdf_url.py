@@ -63,12 +63,17 @@ def download_pdf(download_url, folder):
     download_url (str): URL of pdf to download
 
     folder (str): local filepath in which to save pdf 
+
+    Returns
+    -------
+    file_path (str): path to downloaded file
     """
     response = urllib.request.urlopen(download_url)
     filename = download_url.split('/')[-1]
     file = open(folder+'/'+filename, 'wb')
     file.write(response.read())
     file.close()
+    return(folder+'/'+filename)
 
 def delete_pdf(download_url, folder):
     """
@@ -83,7 +88,7 @@ def delete_pdf(download_url, folder):
     """
     filename = download_url.split('/')[-1]
     os.remove(folder+'/'+filename)
-
+###########################################################################
 
 # connect to WHO website and get list of all pdfs
 url="https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/"
@@ -93,38 +98,40 @@ links = soup.find_all('a', href=re.compile(r'(.pdf)'))
 
 # clean the pdf link names
 url_list = []
-for el in links:
-    if(el['href'].startswith('http')):
-        url_list.append(el['href'])
+for link in links:
+    if(link['href'].startswith('http')):
+        url_list.append(link['href'])
     else:
-        url_list.append("https://www.who.int" + el['href'])
+        url_list.append("https://www.who.int" + link['href'])
 
 print(str(len(url_list)), 'pdfs located')
 
 # Create temp folder to hold pdfs (one at a time)
-
-
-
+folder_location = os.getcwd() + '/tmp_pdfs'
+if not os.path.exists(folder_location):os.mkdir(folder_location)
 
 # Create DF to record data in (will be exported as csv)
 df = pd.DataFrame(columns = ['strain', 'onset_date', 'report_date', 'age', 'gender', 'poultry_exposure'])
 
 # Loop through files and append information to df
-for file in files:
-    report_date_str = re.findall('\d\d_\d\d_\d\d\d\d', file)[0]
+for url in url_list[:5]:
+    file = download_pdf(url, folder_location)
+    report_date_str = re.findall('\d\d_\d\d_\d\d\d\d', url)[0]
     pdfFileObj = open(file, 'rb')
     # pdf reader object
     pdfReader = PyPDF2.PdfFileReader(pdfFileObj)
     # number of pages in pdf
     num_pages = pdfReader.numPages
-    # a page object
+    # extract all text to string
     pageObj = ''
     for i in range(num_pages):
         pageObj = pageObj + pdfReader.getPage(i).extractText()
-
+    pageObj = pageObj.replace('\n', '')
     # New infections header string
     ni_header = pageObj[pageObj.find('New infections'):pageObj.find('Risk assessment')]
-
+    print(pageObj.find('New infections'))
+    print(pageObj.find('Risk assessment'))
+    print(ni_header)
     # Check for "no new human infections"
     if re.search(r'[Nn]o new human infection', ni_header):
         print('No new cases in',report_date_str,'report')
@@ -225,6 +232,9 @@ for file in files:
                                         columns = ['strain', 'onset_date', 'report_date', 'age', 'gender', 'poultry_exposure']))
 print(df)
 
+# # Delete temp folder
+# os.removedirs('tmp_pdfs')
+
 
 
 
@@ -269,12 +279,12 @@ print(df)
     # type of strain                  done
     # Gender                          done
 
-# Check test cases for accuracy
+# Check test cases for accuracy (H7N9)
+# Add H5N1!
 # Update date format for non-annex
 # update date format for report_date
 # Add loop for multiple cases in a paragraph
     # Look into
-# Access pdfs programatically!
 # check with katie for date formats, columns names, column orders, etc.
 
 
@@ -282,3 +292,13 @@ print(df)
     # Read PDF Table
     # https://stackoverflow.com/questions/12571905/finding-on-which-page-a-search-string-is-located-in-a-pdf-document-using-python
     # https://aegis4048.github.io/parse-pdf-files-while-retaining-structure-with-tabula-py
+
+    # Make folder 
+    # https://stackoverflow.com/questions/54616638/download-all-pdf-files-from-a-website-using-python
+
+    # Delete folder
+    # https://www.dummies.com/programming/python/how-to-delete-a-file-in-python/
+
+    # Download PDF 
+    # https://stackoverflow.com/questions/24844729/download-pdf-using-urllib 
+    # https://stackoverflow.com/questions/9751197/opening-pdf-urls-with-pypdf
