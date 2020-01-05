@@ -24,6 +24,7 @@ from urllib import request
 from bs4 import BeautifulSoup
 import os
 import urllib
+import datetime
 
 ###########################################################
 # FUNCTIONS
@@ -89,6 +90,20 @@ def delete_pdf(download_url, folder):
     filename = download_url.split('/')[-1]
     os.remove(folder+'/'+filename)
 
+def convert_date(string):
+    """
+    Converts date string in format dd/mm/yyyy
+    to format dd-Mmm-yyyy
+    """
+    x = string.split('/')
+    #print(x)
+    try:
+        date = datetime.datetime(int(x[2]),int(x[1]),int(x[0]))
+        date_str = date.strftime("%d-%b-%Y")
+        return(date_str)
+    except (IndexError, ValueError) as errors:
+        print('Date formats other than dd/mm/yyyy detected in',report_date,'report:',string)
+        pass
 ###########################################################################
 
 # connect to WHO website and get list of all pdfs
@@ -106,6 +121,7 @@ for link in links:
         url_list.append("https://www.who.int" + link['href'])
 
 print(str(len(url_list)), 'pdfs located')
+print(url_list[14:24])
 
 # Create temp folder to hold pdfs (one at a time)
 folder_location = os.getcwd() + '/tmp_pdfs'
@@ -133,7 +149,7 @@ for url in url_list[14:24]:
         date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj[:300])[0].split(' ')
         report_date = date_header[0]+'-'+date_header[1][:3]+'-'+date_header[2]
     else:
-        report_date = 'weird format for '+url
+        report_date = '...strange report date detected for '+url
 
     # New infections header string
     ni_header = pageObj[pageObj.find('New infections'):pageObj.find('Risk assessment')]
@@ -160,7 +176,7 @@ for url in url_list[14:24]:
 
         # If annex table exists, extract relevant information to DF
         if re.findall('[Aa]nnex', info_par) != []:
-            print('Annex detected for H7N9 cases in',report_date)
+            print('--Annex detected for H7N9 cases in',report_date)
             annex_string = "Annex:[\w* \n:-]*A\(H7N9\)"
 
             # Find pages with annex table
@@ -174,14 +190,14 @@ for url in url_list[14:24]:
             # pull relevant information from annex table (age, gender, onset date, poultry exposure)
             while True:
                 try:
-                    print('Reading data from annex table...')
+                    print('----Reading data from annex table...')
                     df_annex = tabula.read_pdf(file, lattice=True, pages=i)
                     cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
                     df_annex = df_annex[cols]
                     df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
                     break
                 except ValueError:
-                    print('Checking if table begins on page after table header...')
+                    print('------Checking if table begins on page after table header...')
                     try:
                         for i in range(0, num_pages):
                             page_i = pdfReader.getPage(i)
@@ -196,13 +212,15 @@ for url in url_list[14:24]:
                         df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
                         break
                     except ValueError:
-                        print('Could not read in annex table for '+report_date+'...investigate PDF')
+                        print('------Could not read in annex table for '+report_date+'...investigate PDF')
                         break
             # Add strain and report_date columns
             df_annex['strain'] = strain 
             df_annex['date_announced'] = report_date
             # Make poultry exposure binary (0 for no exposure, 1 for exposure)
-            df_annex['exposure'] = df_annex['exposure'].str.replace(r'.*poultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0')
+            df_annex['exposure'] = df_annex['exposure'].str.replace(r'.*[Pp]oultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0').str.replace(r'.*[Ii]nvestig', 'unknown').str.replace(r'[Oo]ccupational [Ee]xposure', '1').str.replace('[Uu]nknow.*', 'unknown').str.replace('[Nn]o clear exposure', '0')
+            # Format onset date
+            df_annex['date_onset'] =  df_annex['date_onset'].apply(convert_date)
             # Rearrange columns
             df_annex = df_annex[['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']]
             df = df.append(df_annex)
@@ -229,7 +247,7 @@ for url in url_list[14:24]:
                 elif num_case == 'six':
                     num_case = 6 
                 else:
-                    num_case = 'Check number of cases for '+report_date
+                    num_case = '...Check number of cases for '+report_date+' ...could not detect programatically :('
                 
             # Identify date of diagnosis/symptoms (no year added)
             if re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
@@ -243,9 +261,9 @@ for url in url_list[14:24]:
                 onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
             else:
                 if report_date.startswith('weird'):
-                    onset_date = 'bad report date'
+                    onset_date = 'Report date outside standard format'
                 else:
-                    onset_date = 'check onset date format for '+url
+                    onset_date = 'Onset date outside standard format'
 
             # Identify age -- if multiple, change first index from 0 to 1 to get second age
             age = re.findall('(\d{1,2})(:?-?(year|month)(-| )old)',info_par)[0][0]
@@ -308,7 +326,9 @@ os.removedirs('tmp_pdfs')
 
 # # TO DO
 
-# Check test cases for accuracy (H7N9)
+# Check # cases...find H7N9 with 2-3 and try to pull those out of paragraph
+# Check if katie wants person-to-person recorded
+# Go through her spreadsheet, separate by month, check.
 # Add H5N1
 # Add loop for multiple cases in a paragraph
     # Look into
