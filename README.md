@@ -1,5 +1,7 @@
 # WHO_pdf_reader
 
+### **IN PROGRESS**
+
 The World Health Organization (WHO) outputs [Monthly Risk Assessment Reports](https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/) in pdf format that describe new instances of the influenza virus at the human-animal interface. This code loops through each report from January, 2017 to the present and extracts the age, gender, onset-date, report-date, and poultry exposure for each reported case of avian influenza strains (H7N9, H5N1). A csv for each strain is output in the results folder. 
 
 This code was written to contribute to a post-doctoral project by Katie Gostic, PHD (University of Chicago) that aims to model the incidence and spread of the avian flu.
