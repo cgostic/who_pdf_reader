@@ -1,12 +1,15 @@
 # Parses data from WHO monthly risk assessments on Avian flu 
-# strains (H5N1, H7N9) into a csv for further analysis
+# strains (H5N1, H7N9) into csv's for further analysis
 #
-# Locates all risk assessment reports (pdf format) format
-# https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/,
-# downloads 1 report at a time to temp folder, extracts data, then deletes
-# the download to minimize memory use.
+# - Locates risk assessment reports (pdf format) from Jan, 2017 onward
+#       - https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/,
+# - Downloads 1 report at a time to temp folder, extracts data, then deletes
+#       the download to minimize memory use.
+# - Exports extracted data as csv's to results folder
+#       - H5N1 report
+#       - H7N9 report
 #
-# Final CSV exported to results folder
+# See "Sources" section at bottom of code
 #
 # Cari Gostic, January 2nd, 2020
 # cari.gostic@gmail.com
@@ -103,7 +106,150 @@ def convert_date(string):
         return(date_str)
     except (IndexError, ValueError) as errors:
         print('Date formats other than dd/mm/yyyy detected in',report_date,'report:',string)
+        return(string)
         pass
+
+def detect_report_date(pageObj):
+    """Returns report date from header of WHO assessment report"""
+    if re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj) != []:
+        date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj)[0].split(' ')
+        report_date = date_header[0]+'-'+date_header[1][:3]+'-'+date_header[2]
+    else:
+        report_date = 'weird report date detected for '+url
+    return(report_date)
+
+def parse_annex_table(num_pages,annex_string, strain, report_date):
+    """
+    Parses annex table in WHO assessment report into pandas dataframe
+    with columns strain, age, sex, date_onset, date_announced, exposure.
+
+    Parameters
+    ----------
+    num pages (int): The number of pages in the pdf
+
+    annex_string (str): String to search for in table header 
+    that denotes the start of the annex table for the strain
+
+    strain (str): flu strain
+
+    report_date (str): The WHO assessment report date (dd-Mmm-yyyy)
+
+    Returns
+    -------
+    DataFrame Object
+        A dataframe with columns: 
+        strain, age, sex, date_onset, date_announced, exposure
+    """
+    # Find pages with annex table
+    for i in range(0, num_pages):
+        page_i = pdfReader.getPage(i)
+        page_text = page_i.extractText()
+        if re.search(annex_string,page_text):
+            annex_page = i
+    if annex_page != num_pages:
+        i = str(annex_page)+'-'+str(num_pages)
+    # pull relevant information from annex table (age, gender, onset date, poultry exposure)
+    while True:
+        try:
+            print('----Reading data from annex table...')
+            df_annex = tabula.read_pdf(file, lattice=True, pages=i)
+            cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
+            df_annex = df_annex[cols]
+            df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
+            break
+        except ValueError:
+            print('------Checking if table begins on page after table header...')
+            try:
+                for i in range(0, num_pages):
+                    page_i = pdfReader.getPage(i)
+                    page_text = page_i.extractText()
+                    if re.search(annex_string,page_text):
+                        annex_page = i + 1
+                if annex_page != num_pages:
+                    i = str(annex_page)+'-'+str(num_pages)
+                df_annex = tabula.read_pdf(file, lattice=True, pages=i)
+                cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
+                df_annex = df_annex[cols]
+                df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
+                break
+            except ValueError:
+                print('------Could not read in annex table for '+report_date+'...investigate PDF')
+                break
+    # Add strain and report_date columns
+    df_annex['strain'] = strain 
+    df_annex['date_announced'] = report_date
+    # Make poultry exposure binary (0 for no exposure, 1 for exposure)
+    df_annex['exposure'] = df_annex['exposure'].str.replace(r'.*[Pp]oultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0').str.replace(r'.*[Ii]nvestig', 'unknown').str.replace(r'[Oo]ccupational [Ee]xposure', '1').str.replace('[Uu]nknow.*', 'unknown').str.replace('[Nn]o clear exposure', '0')
+    # Format onset date
+    df_annex['date_onset'] =  df_annex['date_onset'].apply(convert_date)
+    # Rearrange columns
+    df_annex = df_annex[['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']]
+    return(df_annex)
+
+def detect_patient_age(info_par):
+    """Returns age of patient described in paragraph of WHO assessment"""
+    if re.findall('(\d{1,2}) ?(:?-?(year|month)(-| )old)',info_par) != []:
+        age = re.findall('(\d{1,2}) ?(:?-?(year|month)(-| )old)',info_par)[0][0]
+    else:
+        age = 'unknown'
+    return(age)
+
+def detect_onset_date(pageObj,info_par):
+    """Returns the illness onset date as described in paragraph of WHO assessment"""
+    date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj)[0].split(' ')
+    if re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
+        onset_date_dm = re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
+        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+    elif re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
+        onset_date_dm = re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
+        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+    elif re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
+        onset_date_dm = re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
+        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+    else:
+        if report_date.startswith('weird'):
+            onset_date = 'bad report date'
+        else:
+            onset_date = 'check onset date format for '+url
+    return(onset_date)
+
+def detect_patient_gender(info_par):
+    """Returns the age of patient described in WHO assessment"""
+    if re.findall('(male|female)', info_par) != []:
+        gender = re.findall('(male|female)', info_par)[0][0]
+    elif re.findall('( [Hh]e | [Hh]er )', info_par) != []:
+        gender = re.findall('( [Hh]e | [Ss]he )', info_par)[0]
+        if gender == ' he ' or gender == ' He ':
+            gender = 'm'
+        else:
+            gender = 'f'
+    elif re.findall('( [Mm]an | [Ww]oman )', info_par) != []:
+        gender = re.findall('( [Mm]an | [Ww]oman )', info_par)[0]
+        if gender == ' man ' or gender == ' Man ':
+            gender = 'm'
+        else:
+            gender = 'f'
+    else:
+        gender = 'Not reported as male/female...Check '+url
+    return(gender)
+
+def detect_poultry_exposure(info_par):
+    """
+    Returns poultry exposure (binary, 0 = no exposure, 1 = exposure) as described
+    in WHO assessment report
+    """
+    if re.findall('(?<=\.)( [A-Za-z ,]* poultry [A-Za-z ,]*)(\.|;)',info_par) != []:
+        poul_sentence = re.findall('((?<=\.)( [A-Za-z ,]* poultry [A-Za-z ,]*)(\.|;))',info_par)[0][0]
+    elif re.findall('(\w* )*(exposure )(\w* )*', info_par) != []:
+        poul_sentence = re.findall('((\w* )*(exposure )(\w* )*)', info_par)[0][0]
+    elif re.findall('(\w* )*(birds? )(\w* )*', info_par) != []:
+        poul_sentence = re.findall('((\w* )*(birds? )(\w* )*)', info_par)[0][0]
+    # Code exposure as binary 1 = exposure, 0 = no exposure
+    if not re.search('([Nn]o |not|none)', poul_sentence):
+        poultry_exposure = 1
+    else:
+        poultry_exposure = 0
+    return(poultry_exposure)
 ###########################################################################
 
 # connect to WHO website and get list of all pdfs
@@ -120,18 +266,19 @@ for link in links:
     else:
         url_list.append("https://www.who.int" + link['href'])
 
-print(str(len(url_list)), 'pdfs located')
-print(url_list[14:24])
-
+# Locate only reports from 2017 onward
+index_2017 = url_list.index('https://www.who.int/influenza/human_animal_interface/Influenza_Summary_IRA_HA_interface_01_16_2017_FINAL.pdf')+1
+print(str(len(url_list[:index_2017])), 'pdfs located')
 # Create temp folder to hold pdfs (one at a time)
 folder_location = os.getcwd() + '/tmp_pdfs'
 if not os.path.exists(folder_location):os.mkdir(folder_location)
 
-# Create DF to record data in (will be exported as csv)
-df = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure'])
+# Create DFs to record data in (will be exported as csv's)
+df_h7n9 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure'])
+df_h5n1 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure'])
 
-# Loop through files and append information to df
-for url in url_list[14:24]:
+# Identify pdfs froom 2017 onward on WHO website
+for url in url_list[:index_2017]:
     file = download_pdf(url, folder_location)  
     pdfFileObj = open(file, 'rb')
     # pdf reader object
@@ -145,11 +292,7 @@ for url in url_list[14:24]:
     pageObj = pageObj.replace('\n', '')
 
     # Find report date
-    if re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj[:300]) != []:
-        date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj[:300])[0].split(' ')
-        report_date = date_header[0]+'-'+date_header[1][:3]+'-'+date_header[2]
-    else:
-        report_date = '...strange report date detected for '+url
+    report_date = detect_report_date(pageObj[:300])
 
     # New infections header string
     ni_header = pageObj[pageObj.find('New infections'):pageObj.find('Risk assessment')]
@@ -163,177 +306,138 @@ for url in url_list[14:24]:
 
     # Check for H5N1 infections
     if re.search('H5N1', ni_header):
-        print('Cases of H5N1 detected for',report_date)
+        strain = 'H5N1'
+        report_date = report_date
+        # Identify paragraph with information on H7N9 infections
+        info_start = find_nth(pageObj, '[Aa]vian [Ii]nfluenza A\(H5\) viruse?s?', 1)
+        info_par = pageObj[info_start:info_start + find_nth(pageObj[info_start:], 
+                                'Risk [Aa]ssessment', 1)].replace('\n', '')
+        # Print number of cases
+        if re.findall('\w*(?= laboratory-confirmed)', info_par)[0] == 'new':
+                num_case = re.findall('\w*(?= new laboratory-confirmed)', info_par)[0].replace(' ', '')
+        else:
+            num_case = re.findall('\w*(?= laboratory-confirmed)', info_par)[0].replace(' ', '')
+        # If reported number is string, convert to integer
+        if num_case == 'one':
+            num_case = 1
+        elif num_case == 'two':
+            num_case = 2
+        elif num_case == 'three':
+            num_case = 3
+        elif num_case == 'four':
+            num_case = 4
+        elif num_case == 'five':
+            num_case = 5
+        elif num_case == 'six':
+            num_case = 6 
+        print(num_case,'new case(s) of H5N1 detected in',report_date)
+
+        # If annex table exists, extract relevant information to DF
+        if re.findall('[Aa]nnex', info_par) != []:
+            print('Annex detected for H5N1 cases in',report_date)
+            annex_string = "Annex:[\w* \n:-]*A\(H5.*\)"
+            df_annex = parse_annex_table(num_pages, annex_string, strain, report_date)
+            df_h5n1 = df_h5n1.append(df_annex)
+        
+        # If no annex table exists, extract information from paragraph
+        # describing H5N1 cases
+        else:
+            # Account for multiple cases described by looping through # of
+            # ages reported in paragraph
+            start_index = 0
+            for case in range(num_case):
+                # Identify patient age -- if multiple cases, set range to search for only current case
+                age = detect_patient_age(info_par[start_index:])
+                if num_case > case+1 and re.findall('(\d{1,2})(:?-?(year|month)(-| )old)',info_par[start_index:]) != []:
+                        next_index = find_nth(info_par, '(:?-?(year|month)(-| )old)',case+2)-3
+                else:
+                    next_index = len(info_par)
+
+                # Identify date of illness onset
+                onset_date = detect_onset_date(pageObj[:300], info_par[start_index:next_index])
+
+                # Identify gender
+                gender = detect_patient_gender(info_par[start_index:next_index])
+                
+                # Check for poultry exposure
+                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])
+
+                # Add values to data frame
+                # columns = ['strain', 'onset_date', 'report_date', 'poultry_exposure', 'age' 'gender']
+                df_h5n1 = df_h5n1.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure]], 
+                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']))
+                start_index = next_index      
+
+
     # Check for H7N9 infections
     if re.search('H7N9', ni_header):
-        print('Cases of H7N9 Detected for',report_date)
         strain = 'H7N9'
         report_date = report_date
         # Identify paragraph with information on H7N9 infections
         info_start = find_nth(pageObj, 'Avian [Ii]nfluenza A\(H7N9\)', 1)
         info_par = pageObj[info_start:info_start + find_nth(pageObj[info_start:], 
                                 'Risk [Aa]ssessment', 1)].replace('\n', '')
+        # Print number of cases
+        if re.findall('\w*(?= laboratory-confirmed)', info_par)[0] == 'new':
+                num_case = re.findall('\w*(?= new laboratory-confirmed)', info_par)[0].replace(' ', '')
+        else:
+            num_case = re.findall('\w*(?= laboratory-confirmed)', info_par)[0].replace(' ', '')
+        # If reported number is string, convert to integer
+        if num_case == 'one':
+            num_case = 1
+        elif num_case == 'two':
+            num_case = 2
+        elif num_case == 'three':
+            num_case = 3
+        elif num_case == 'four':
+            num_case = 4
+        elif num_case == 'five':
+            num_case = 5
+        print(num_case,'new case(s) of H7N9 detected for',report_date)
 
         # If annex table exists, extract relevant information to DF
         if re.findall('[Aa]nnex', info_par) != []:
             print('--Annex detected for H7N9 cases in',report_date)
             annex_string = "Annex:[\w* \n:-]*A\(H7N9\)"
+            df_annex = parse_annex_table(num_pages, annex_string, strain, report_date)
+            df_h7n9 = df_h7n9.append(df_annex)
 
-            # Find pages with annex table
-            for i in range(0, num_pages):
-                page_i = pdfReader.getPage(i)
-                page_text = page_i.extractText()
-                if re.search(annex_string,page_text):
-                    annex_page = i
-            if annex_page != num_pages:
-                i = str(annex_page)+'-'+str(num_pages)
-            # pull relevant information from annex table (age, gender, onset date, poultry exposure)
-            while True:
-                try:
-                    print('----Reading data from annex table...')
-                    df_annex = tabula.read_pdf(file, lattice=True, pages=i)
-                    cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
-                    df_annex = df_annex[cols]
-                    df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
-                    break
-                except ValueError:
-                    print('------Checking if table begins on page after table header...')
-                    try:
-                        for i in range(0, num_pages):
-                            page_i = pdfReader.getPage(i)
-                            page_text = page_i.extractText()
-                            if re.search(annex_string,page_text):
-                                annex_page = i + 1
-                        if annex_page != num_pages:
-                            i = str(annex_page)+'-'+str(num_pages)
-                        df_annex = tabula.read_pdf(file, lattice=True, pages=i)
-                        cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
-                        df_annex = df_annex[cols]
-                        df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
-                        break
-                    except ValueError:
-                        print('------Could not read in annex table for '+report_date+'...investigate PDF')
-                        break
-            # Add strain and report_date columns
-            df_annex['strain'] = strain 
-            df_annex['date_announced'] = report_date
-            # Make poultry exposure binary (0 for no exposure, 1 for exposure)
-            df_annex['exposure'] = df_annex['exposure'].str.replace(r'.*[Pp]oultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0').str.replace(r'.*[Ii]nvestig', 'unknown').str.replace(r'[Oo]ccupational [Ee]xposure', '1').str.replace('[Uu]nknow.*', 'unknown').str.replace('[Nn]o clear exposure', '0')
-            # Format onset date
-            df_annex['date_onset'] =  df_annex['date_onset'].apply(convert_date)
-            # Rearrange columns
-            df_annex = df_annex[['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']]
-            df = df.append(df_annex)
         # If no annex table exists, extract information from paragraph
         # describing H7N9 cases
-        else:
-            # Identify number of new infections in reporting period
-            if re.findall('\w*(?= laboratory-confirmed)', info_par)[0] == 'new':
-                num_case = re.findall('\w*(?= new laboratory-confirmed)', info_par)[0].replace(' ', '')
-            else:
-                num_case = re.findall('\w*(?= laboratory-confirmed)', info_par)[0].replace(' ', '')
-            # If reported number is string, convert to integer
-            if not str.isdigit(num_case):
-                if num_case == 'one':
-                    num_case = 1
-                elif num_case == 'two':
-                    num_case = 2
-                elif num_case == 'three':
-                    num_case = 3
-                elif num_case == 'four':
-                    num_case = 4
-                elif num_case == 'five':
-                    num_case = 5
-                elif num_case == 'six':
-                    num_case = 6 
+        else: 
+
+            # Account for multiple cases described by looping through # of
+            # ages reported in paragraph
+            start_index = 0
+            for case in range(num_case):
+                # Identify patient age -- if multiple cases, set range to search for only current case
+                age = detect_patient_age(info_par[start_index:])
+                if num_case > case+1 and re.findall('(\d{1,2})(:?-?(year|month)(-| )old)',info_par[start_index:]) != []:
+                        next_index = find_nth(info_par, '(:?-?(year|month)(-| )old)',case+2)-3
                 else:
-                    num_case = '...Check number of cases for '+report_date+' ...could not detect programatically :('
+                    next_index = len(info_par)
+
+                # Identify date of illness onset
+                onset_date = detect_onset_date(pageObj[:300], info_par[start_index:next_index])
+
+                # Identify gender
+                gender = detect_patient_gender(info_par[start_index:next_index])
                 
-            # Identify date of diagnosis/symptoms (no year added)
-            if re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
-                onset_date_dm = re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-                onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
-            elif re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
-                onset_date_dm = re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-                onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
-            elif re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
-                onset_date_dm = re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-                onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
-            else:
-                if report_date.startswith('weird'):
-                    onset_date = 'Report date outside standard format'
-                else:
-                    onset_date = 'Onset date outside standard format'
+                # Check for poultry exposure
+                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])
 
-            # Identify age -- if multiple, change first index from 0 to 1 to get second age
-            age = re.findall('(\d{1,2})(:?-?(year|month)(-| )old)',info_par)[0][0]
-            
-            # Identify gender
-            gender = re.findall('(male|female)', info_par)[0][0]
-            
-            # Check for poultry exposure
-            if re.findall('(?<=\.)( [A-Za-z ,]* poultry [A-Za-z ,]*)(\.|;)',info_par) != []:
-                poul_sentence = re.findall('((?<=\.)( [A-Za-z ,]* poultry [A-Za-z ,]*)(\.|;))',info_par)[0][0]
-            elif re.findall('(\w* )*(exposure )(\w* )*', info_par) != []:
-                poul_sentence = re.findall('((\w* )*(exposure )(\w* )*)', info_par)[0][0]
-            if not re.search('(no|not|none)', poul_sentence):
-                poultry_exposure = 1
-            else:
-                poultry_exposure = 0
+                # Add values to data frame
+                # columns = ['strain', 'onset_date', 'report_date', 'poultry_exposure', 'age' 'gender']
+                df_h7n9 = df_h7n9.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure]], 
+                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']))
+                start_index = next_index
 
-            # Add values to data frame
-            # columns = ['strain', 'onset_date', 'report_date', 'poultry_exposure', 'age' 'gender']
-            df = df.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure]], 
-                                        columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']))
     delete_pdf(url, folder_location)
-df.to_csv('results/WHO-avian-flu-reports_2014-present.csv')
+df_h7n9.to_csv('results/WHO-avian-flu-H7N9-reports_2017-present.csv')
+df_h5n1.to_csv('results/WHO-avian-flu-H5N1-reports_2017-present.csv')
 
 # Delete temp folder
 os.removedirs('tmp_pdfs')
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # TEST STRINGS
-# st
-# Since the last update on 25 January 2018, one laboratory-confirmed human case of influenza A(H7N4) virus infection was reported to WHO. A 68-year-old female resident of Jiangsu province, China, developed symptoms on 25 December 2017.
-
-# st2
-# On 11 November 2019, the detection of avian influenza A(H9N2) virus infection in a 4-year-old girl from Fujian province, with an onset of illness on 26 October 2019, was reported to WHO from China. The patient had mild illness but was hospitalized on 5 November 2019. Exposure to backyard poultry was reported. A second case was reported to WHO from China on 23 November, in a 5-year old girl from Anhui province, with an onset of illness on 12 November 2019. The patient had mild illness and recovered. Exposure to a poultry slaughterhouse was reported. No further cases among contacts of the two cases were detected.
-
-# Sample PDFs
-#     02_03 1 case H7N9
-#     09_27 7 cases H7N9 Annex
-#     25_01 1 case H7N9
-#     25_11 No H7N9 
-#     28_05 No new
-#     09_04 1 New H7N9
-#     07_25 27 New H7N9 Annex
-#     05_16 93 H7N9 Annex 2 pages
-
-
-
-
-# # TO DO
-
-# Check # cases...find H7N9 with 2-3 and try to pull those out of paragraph
-# Check if katie wants person-to-person recorded
-# Go through her spreadsheet, separate by month, check.
-# Add H5N1
-# Add loop for multiple cases in a paragraph
-    # Look into
-
-
 
 # Sources:
     # Read PDF Table
