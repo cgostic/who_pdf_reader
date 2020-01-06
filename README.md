@@ -7,13 +7,13 @@ This code was written to contribute to a post-doctoral project by Katie Gostic, 
 - If you are interested in only the csv output, see the results folder for data ranging from January, 2017 - November, 2019 (the most recent report as of posting, January 4, 2020).
 - If a more recent report is available that you would like to include or you'd like to run the code on your own:
 
-Instructions for running code:
-- Download/fork this repository
+## Instructions for running code:
+- Download/clone this repository
 - Navigate to the repository in terminal
-- execute `python read_pdf_url.py`
-- view the results folder for csv output
+- Execute `python read_pdf_url.py` (Linux)
+- View the results folder for csv output
 
-This code requires the following Python packages:
+#### This code requires the following Python packages:
 - re
 - pandas
 - PyPDF2
@@ -26,6 +26,7 @@ This code requires the following Python packages:
 - bs4
 - os
 - datetime
+
 
 **NOTE: testing has not been confirmed past January, 2017 and oddities/inconsistencies in the wording of the reports may result in errors**
 
