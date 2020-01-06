@@ -27,11 +27,13 @@ This code requires the following Python packages:
 - os
 - datetime
 
+**NOTE: testing has not been confirmed past January, 2017 and oddities/inconsistencies in the wording of the reports may result in errors**
+
 To increase the range of data gathered beyond January, 2017, replace the link to the January, 2017 report in line 270 (shown below) with a link to the earliest report you'd like included. 
 ```
 index_2017 = url_list.index('https://www.who.int/influenza/human_animal_interface/Influenza_Summary_IRA_HA_interface_01_16_2017_FINAL.pdf')+1
 ```
 To include all reports listed on the WHO website, remove the slicing of `url_list` from the for-loop on line 281.
-**NOTE: testing has not been confirmed past January, 2017 and oddities/inconsistencies in the wording of the reports may result in errors**
+
 
 
