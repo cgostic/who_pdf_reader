@@ -102,18 +102,34 @@ def convert_date(string):
     #print(x)
     try:
         date = datetime.datetime(int(x[2]),int(x[1]),int(x[0]))
-        date_str = date.strftime("%d-%b-%Y")
+        date_str = date.strftime("%Y-%m-%d")
         return(date_str)
     except (IndexError, ValueError) as errors:
         print('Date formats other than dd/mm/yyyy detected in',report_date,'report:',string)
         return(string)
         pass
 
+def month_to_int(mmm):
+    return{
+        'Jan' : '1',
+        'Feb' : '2',
+        'Mar' : '3',
+        'Apr' : '4',
+        'May' : '5',
+        'Jun' : '6',
+        'Jul' : '7',
+        'Aug' : '8',
+        'Sep' : '9', 
+        'Oct' : '10',
+        'Nov' : '11',
+        'Dec' : '12'
+        }[mmm]
+
 def detect_report_date(pageObj):
     """Returns report date from header of WHO assessment report"""
     if re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj) != []:
         date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj)[0].split(' ')
-        report_date = date_header[0]+'-'+date_header[1][:3]+'-'+date_header[2]
+        report_date = date_header[2]+'-'+month_to_int(date_header[1][:3])+'-'+date_header[0]
     else:
         report_date = 'weird report date detected for '+url
     return(report_date)
@@ -155,7 +171,7 @@ def parse_annex_table(num_pages,annex_string, strain, report_date):
             df_annex = tabula.read_pdf(file, lattice=True, pages=i)
             cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
             df_annex = df_annex[cols]
-            df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
+            df_annex.columns = ['age', 'sex', 'date_onset', 'poultry_exposure']
             break
         except ValueError:
             print('------Checking if table begins on page after table header...')
@@ -170,7 +186,7 @@ def parse_annex_table(num_pages,annex_string, strain, report_date):
                 df_annex = tabula.read_pdf(file, lattice=True, pages=i)
                 cols = [x for x in df_annex.columns if not x.startswith('Pro') and not x.startswith('Case')]
                 df_annex = df_annex[cols]
-                df_annex.columns = ['age', 'sex', 'date_onset', 'exposure']
+                df_annex.columns = ['age', 'sex', 'date_onset', 'poultry_exposure']
                 break
             except ValueError:
                 print('------Could not read in annex table for '+report_date+'...investigate PDF')
@@ -179,11 +195,14 @@ def parse_annex_table(num_pages,annex_string, strain, report_date):
     df_annex['strain'] = strain 
     df_annex['date_announced'] = report_date
     # Make poultry exposure binary (0 for no exposure, 1 for exposure)
-    df_annex['exposure'] = df_annex['exposure'].str.replace(r'.*[Pp]oultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0').str.replace(r'.*[Ii]nvestig', 'unknown').str.replace(r'[Oo]ccupational [Ee]xposure', '1').str.replace('[Uu]nknow.*', 'unknown').str.replace('[Nn]o clear exposure', '0')
+    df_annex['poultry_exposure'] = df_annex['poultry_exposure'].str.replace(r'.*[Pp]oultry.*', '1').str.replace(r'[Nn]o [Kk]nown [Ee]xposure', '0').str.replace(r'.*[Ii]nvestig', 'unknown').str.replace(r'[Oo]ccupational [Ee]xposure', '1').str.replace('[Uu]nknow.*', 'unknown').str.replace('[Nn]o .*', '0').str.replace('NR', 'unknown')
+    # Mark human-to-human contact with sick individual
+    df_annex['sick_human_exposure'] = df_annex['poultry_exposure'].str.replace('\d', '0').str.replace('unknown', '0').str.replace('.*[A-Za-z].*', '1')
+    df_annex['poultry_exposure'] = df_annex['poultry_exposure'].str.replace(r'.* \w+ \w+.*', '0')
     # Format onset date
     df_annex['date_onset'] =  df_annex['date_onset'].apply(convert_date)
     # Rearrange columns
-    df_annex = df_annex[['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']]
+    df_annex = df_annex[['strain', 'age', 'sex', 'date_onset', 'date_announced', 'poultry_exposure', 'sick_human_exposure']]
     return(df_annex)
 
 def detect_patient_age(info_par):
@@ -199,13 +218,13 @@ def detect_onset_date(pageObj,info_par):
     date_header = re.findall('(?<=Summary and assessment).* (\d{1,2} \w* \d\d\d\d).*(?=Since)', pageObj)[0].split(' ')
     if re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
         onset_date_dm = re.findall('(?:[Ss]ymptoms)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+        onset_date = date_header[2]+'-'+month_to_int(onset_date_dm[1][:3])+'-'+onset_date_dm[0]
     elif re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
         onset_date_dm = re.findall('(?:[Oo]nset)( (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+        onset_date = date_header[2]+'-'+month_to_int(onset_date_dm[1][:3])+'-'+onset_date_dm[0]
     elif re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)', info_par) != [] and not report_date.startswith('weird'):
         onset_date_dm = re.findall('(?:developed (\w* ){0,4})(\d{1,2} \w*)',info_par)[0][-1].split(' ')
-        onset_date = onset_date_dm[0]+'-'+onset_date_dm[1][:3]+'-'+date_header[2]
+        onset_date = date_header[2]+'-'+month_to_int(onset_date_dm[1][:3])+'-'+onset_date_dm[0]
     else:
         if report_date.startswith('weird'):
             onset_date = 'bad report date'
@@ -247,9 +266,11 @@ def detect_poultry_exposure(info_par):
     # Code exposure as binary 1 = exposure, 0 = no exposure
     if not re.search('([Nn]o |not|none)', poul_sentence):
         poultry_exposure = 1
+        sick_human_exposure = 0
     else:
         poultry_exposure = 0
-    return(poultry_exposure)
+        sick_human_exposure = 0
+    return(poultry_exposure, sick_human_exposure)
 ###########################################################################
 
 # connect to WHO website and get list of all pdfs
@@ -274,8 +295,8 @@ folder_location = os.getcwd() + '/tmp_pdfs'
 if not os.path.exists(folder_location):os.mkdir(folder_location)
 
 # Create DFs to record data in (will be exported as csv's)
-df_h7n9 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure'])
-df_h5n1 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure'])
+df_h7n9 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'poultry_exposure', 'sick_human_exposure'])
+df_h5n1 = pd.DataFrame(columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'poultry_exposure', 'sick_human_exposure'])
 
 # Identify pdfs froom 2017 onward on WHO website
 for url in url_list[:index_2017]:
@@ -360,12 +381,15 @@ for url in url_list[:index_2017]:
                 gender = detect_patient_gender(info_par[start_index:next_index])
                 
                 # Check for poultry exposure
-                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])
+                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])[0]
+
+                # Check for exposure to sick humans
+                sick_human_exposure = detect_poultry_exposure(info_par[start_index:next_index])[1]
 
                 # Add values to data frame
                 # columns = ['strain', 'onset_date', 'report_date', 'poultry_exposure', 'age' 'gender']
-                df_h5n1 = df_h5n1.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure]], 
-                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']))
+                df_h5n1 = df_h5n1.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure, sick_human_exposure]], 
+                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'poultry_exposure', 'sick_human_exposure']))
                 start_index = next_index      
 
 
@@ -424,15 +448,19 @@ for url in url_list[:index_2017]:
                 gender = detect_patient_gender(info_par[start_index:next_index])
                 
                 # Check for poultry exposure
-                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])
+                poultry_exposure = detect_poultry_exposure(info_par[start_index:next_index])[0]
+
+                # Check for exposure to sick humans
+                sick_human_exposure = detect_poultry_exposure(info_par[start_index:next_index])[1]
 
                 # Add values to data frame
                 # columns = ['strain', 'onset_date', 'report_date', 'poultry_exposure', 'age' 'gender']
-                df_h7n9 = df_h7n9.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure]], 
-                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'exposure']))
+                df_h7n9 = df_h7n9.append(pd.DataFrame([[strain, age, gender, onset_date, report_date, poultry_exposure, sick_human_exposure]], 
+                                            columns = ['strain', 'age', 'sex', 'date_onset', 'date_announced', 'poultry_exposure', 'sick_human_exposure']))
                 start_index = next_index
 
     delete_pdf(url, folder_location)
+
 df_h7n9.to_csv('results/WHO-avian-flu-H7N9-reports_2017-present.csv')
 df_h5n1.to_csv('results/WHO-avian-flu-H5N1-reports_2017-present.csv')
 
