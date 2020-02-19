@@ -23,7 +23,11 @@ RUN pip install tabula-py==1.4.3 && \
     pip install PyPDF2==1.26.0 && \
     pip install bs4==0.0.1
 
+RUN -p mkdir /home/WHO_pdf_reader/src 
+ADD parse_functions.py /home/WHO_pdf_reader/src/
+
 CMD ["/bin/bash"]
+
 
 # Sources
     # https://gist.github.com/pangyuteng/f5b00fe63ac31a27be00c56996197597

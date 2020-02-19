@@ -29,8 +29,10 @@ import os
 import urllib
 import datetime
 import sys
+
 # Import helper functions from src/parse_functions.py
-sys.path.append('src')
+cwd = os.getcwd()
+sys.path.append(cwd+'src')
 from parse_functions import (find_nth, download_pdf, delete_pdf, 
     month_to_int, detect_poultry_exposure, detect_report_date, parse_annex_table, 
     detect_patient_age, detect_patient_gender, detect_onset_date, bad_dates_rep,
