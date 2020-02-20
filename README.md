@@ -2,6 +2,7 @@
 
 
 The World Health Organization (WHO) outputs [Monthly Risk Assessment Reports](https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/) in pdf format that describe new instances of the influenza virus at the human-animal interface. This code loops through each report from January, 2017 to the present and extracts the age, gender, onset-date, report-date, and poultry exposure for each reported case of avian influenza strains (H7N9, H5N1). The following csv's are output in the results folder:
+
 - WHO-avian-flu-H5N1-reports_2017-present.csv
 - WHO-avian-flu-H7N9-reports_2017-present.csv
 
@@ -12,24 +13,34 @@ This code was written to contribute to a post-doctoral project by Katie Gostic, 
 
 # Instructions for running code:
 
+There are two version of the main script, (1) read_pdf_url_docker.py, which has absolute filepaths hard-coded to run successfully within the `carigostic/who_pdf_reader` Docker image, and (2) read_pdf_url.py, which has relative filepaths so to code can run locally.
+
 ### Using docker
 
-- Download [Docker]() if not already installed
+- Download [Docker](https://www.docker.com/products/docker-desktop) if not already installed
 - Download/clone this repository
-- Input local **absolute** path to this repository as indicated in code below and execute in terminal:
+- Input local **absolute** path to this repository as indicated in code below and execute the following script in the terminal (Linux):
 
 ```
-
+sudo docker run --rm -v <absolute local path>/who_pdf_reader:/who_pdf_reader carigostic/who_pdf_reader:v1.0 python /who_pdf_reader/read_pdf_url_docker.py 
 ```
+
+- View the results folder for csv output
 
 ### Manually
+
 - Ensure all package dependencies are met (below), including Java version
 - Download/clone this repository
 - Navigate to the repository in terminal
-- Execute `python read_pdf_url.py` (Linux)
+- Execute the following script in the terminal (Linux):
+
+```
+python read_pdf_url.py` 
+```
+
 - View the results folder for csv output
 
-#### This code requires the following Python 3.7 packages:
+#### This code requires Python 3.7 and the following packages:
 - re
 - pandas
 - PyPDF2 == 1.26.0
