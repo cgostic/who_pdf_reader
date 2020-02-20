@@ -61,7 +61,7 @@ To increase the range of data gathered beyond January, 2017, replace the link to
 ```
 index_2017 = url_list.index('https://www.who.int/influenza/human_animal_interface/Influenza_Summary_IRA_HA_interface_01_16_2017_FINAL.pdf')+1
 ```
-To include all reports listed on the WHO website, remove the slicing of `url_list` from the for-loop on line 281.
+To include all reports listed on the WHO website, remove the slicing of `url_list` from the for-loop on line 72.
 
 
 
