@@ -57,7 +57,7 @@ python read_pdf_url.py`
 
 **NOTE: testing has not been confirmed past January, 2017 and oddities/inconsistencies in the wording of the reports may result in errors**
 
-To increase the range of data gathered beyond January, 2017, replace the link to the January, 2017 report in line 270 (shown below) with a link to the earliest report you'd like included. 
+To increase the range of data gathered beyond January, 2017, replace the link to the January, 2017 report in line 62 (shown below) with a link to the earliest report you'd like included. 
 ```
 index_2017 = url_list.index('https://www.who.int/influenza/human_animal_interface/Influenza_Summary_IRA_HA_interface_01_16_2017_FINAL.pdf')+1
 ```
