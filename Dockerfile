@@ -4,8 +4,6 @@
 
 FROM openjdk:8
 
-WORKDIR /WHO_pdf_reader
-
 # System packages 
 RUN apt-get update && apt-get install -y curl
 
