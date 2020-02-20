@@ -6,14 +6,14 @@ The World Health Organization (WHO) outputs [Monthly Risk Assessment Reports](ht
 - WHO-avian-flu-H5N1-reports_2017-present.csv
 - WHO-avian-flu-H7N9-reports_2017-present.csv
 
-This code was written to contribute to a post-doctoral project by Katie Gostic, PHD (University of Chicago) that aims to model the incidence and spread of the avian flu.
+This code was written to contribute to a post-doctoral project by Katie Gostic, PhD (University of Chicago) that aims to model the incidence and spread of the avian flu.
 
 - If you are interested in only the csv output, see the results folder for data ranging from January, 2017 - November, 2019 (the most recent report as of posting, January 4, 2020).
 - If a more recent report is available that you would like to include or you'd like to run the code on your own:
 
 # Instructions for running code:
 
-There are two version of the main script, (1) read_pdf_url_docker.py, which has absolute filepaths hard-coded to run successfully within the `carigostic/who_pdf_reader` Docker image, and (2) read_pdf_url.py, which has relative filepaths so to code can run locally.
+There are two versions of the main script, (1) read_pdf_url_docker.py, which has absolute filepaths hard-coded to run successfully within the `carigostic/who_pdf_reader` Docker image, and (2) read_pdf_url.py, which has relative filepaths so the code can run locally.
 
 ### Using docker
 
