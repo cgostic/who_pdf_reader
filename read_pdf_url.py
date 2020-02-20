@@ -29,14 +29,19 @@ import os
 import urllib
 import datetime
 import sys
-
+sys.path.append('src')
 # Import helper functions from src/parse_functions.py
-cwd = os.getcwd()
-sys.path.append(cwd+'src')
 from parse_functions import (find_nth, download_pdf, delete_pdf, 
     month_to_int, detect_poultry_exposure, detect_report_date, parse_annex_table, 
     detect_patient_age, detect_patient_gender, detect_onset_date, bad_dates_rep,
     bad_dates_for)
+
+# Supress stderrors for fonts and table formats
+class NullDevice():
+    def write(self, s):
+        pass
+
+sys.stderr = NullDevice()
 
 # connect to WHO website and get list of all pdfs
 url="https://www.who.int/influenza/human_animal_interface/HAI_Risk_Assessment/en/"
@@ -254,3 +259,6 @@ os.removedirs('tmp_pdfs')
     # Download PDF 
     # https://stackoverflow.com/questions/24844729/download-pdf-using-urllib 
     # https://stackoverflow.com/questions/9751197/opening-pdf-urls-with-pypdf
+
+    # Supress std errors
+    # http://coreygoldberg.blogspot.com/2009/05/python-redirect-or-turn-off-stdout-and.html
